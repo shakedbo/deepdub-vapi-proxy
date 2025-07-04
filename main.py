@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import requests
 import tempfile
 import os
@@ -8,6 +8,9 @@ app = Flask(__name__)
 DEEPDUB_API_KEY = os.getenv("DEEPDUB_API_KEY")
 VOICE_PROMPT_ID = os.getenv("DEEPDUB_VOICE_PROMPT_ID")
 
+AUDIO_FOLDER = "/tmp/deepdub_audio"
+os.makedirs(AUDIO_FOLDER, exist_ok=True)
+
 @app.route("/tts", methods=["POST"])
 def tts():
     data = request.get_json()
@@ -16,7 +19,6 @@ def tts():
     if not text:
         return jsonify({"error": "Missing text"}), 400
 
-    # Call Deepdub API
     r = requests.post(
         "https://restapi.deepdub.ai/tts",
         headers={
@@ -34,15 +36,19 @@ def tts():
     if r.status_code != 200:
         return jsonify({"error": "Failed to call Deepdub API", "details": r.text}), 500
 
-    # Save the mp3 file locally
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-        temp_audio.write(r.content)
-        temp_audio_path = temp_audio.name
+    filename = next(tempfile._get_candidate_names()) + ".mp3"
+    path = os.path.join(AUDIO_FOLDER, filename)
 
-    # Serve as audioUrl back to Vapi (must be exposed publicly in production)
+    with open(path, "wb") as f:
+        f.write(r.content)
+
     return jsonify({
-        "audioUrl": f"https://your-public-url.com/audio/{os.path.basename(temp_audio_path)}"
+        "audioUrl": f"https://deepdub-vapi-proxy.onrender.com/audio/{filename}"
     })
+
+@app.route("/audio/<filename>")
+def serve_audio(filename):
+    return send_from_directory(AUDIO_FOLDER, filename)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
