@@ -8,7 +8,7 @@ app = Flask(__name__)
 
 DEEPDUB_API_KEY = os.getenv("DEEPDUB_API_KEY")
 VOICE_PROMPT_ID = os.getenv("DEEPDUB_VOICE_PROMPT_ID")
-VAPI_SECRET = os.getenv("VAPI_SECRET", "deepdub-secret-2025")
+VAPI_SECRET = os.getenv("VAPI_SECRET")
 
 VALID_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100]
 
