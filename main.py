@@ -82,7 +82,7 @@ def tts():
 
     except Exception as e:
         print(f"TTS failed: {request_id} | Error: {str(e)}")
-        return jsonify({"error": "TTS synthesis failed", "requestId": request_id}), 500
+        return jsonify({"error": f"TTS synthesis failed - {str(e)}", "requestId": request_id}), 500
 
 @app.route("/")
 def root():
