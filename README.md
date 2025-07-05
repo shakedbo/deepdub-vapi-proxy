@@ -1,12 +1,13 @@
-# Deepdub to Vapi Proxy (Updated)
+# Deepdub TTS Proxy for VAPI
 
-This version includes static file serving for audio responses.
+This version is compatible with VAPI's custom-voice integration format.
 
 ## Environment Variables
 
 - `DEEPDUB_API_KEY`
 - `DEEPDUB_VOICE_PROMPT_ID`
+- `VAPI_SECRET` (default: deepdub-secret-2025)
 
 ## Deployment
 
-Deploy on Render or Railway. The /tts endpoint returns a public audio URL.
+Use this with VAPI's `custom-voice` provider. Expects POST requests with VAPI's voice-request format.
