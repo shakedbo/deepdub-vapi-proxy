@@ -4,6 +4,9 @@ import os
 import time
 import uuid
 from dotenv import load_dotenv
+import io
+import wave
+import struct
 
 # Load environment variables from .env file
 load_dotenv()
@@ -34,6 +37,66 @@ else:
     print(f"Voice Prompt ID: {VOICE_PROMPT_ID}")
 
 VALID_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100]
+
+def convert_audio_to_pcm(audio_data, sample_rate=16000):
+    """
+    Convert audio data to raw PCM format that Vapi expects.
+    
+    For now, we'll assume the audio from Deepdub is already in a compatible format
+    and try to extract PCM data from it. If it's MP3, we'll return the original data
+    and let Vapi handle it, or we'll try to detect if it's WAV and extract PCM.
+    
+    Args:
+        audio_data: Raw audio bytes (MP3, WAV, etc.)
+        sample_rate: Target sample rate for PCM output
+    
+    Returns:
+        Raw PCM bytes or original audio data
+    """
+    try:
+        # Check if it's a WAV file by looking at the header
+        if audio_data.startswith(b'RIFF') and b'WAVE' in audio_data[:12]:
+            print("Detected WAV format, attempting to extract PCM data")
+            
+            # Try to parse WAV file and extract PCM data
+            audio_buffer = io.BytesIO(audio_data)
+            try:
+                with wave.open(audio_buffer, 'rb') as wav_file:
+                    # Get WAV parameters
+                    channels = wav_file.getnchannels()
+                    sample_width = wav_file.getsampwidth()
+                    framerate = wav_file.getframerate()
+                    
+                    print(f"WAV info: {channels} channels, {sample_width} bytes/sample, {framerate} Hz")
+                    
+                    # Read all frames
+                    frames = wav_file.readframes(wav_file.getnframes())
+                    
+                    # Convert to mono if stereo (simple approach - take left channel)
+                    if channels == 2 and sample_width == 2:  # 16-bit stereo
+                        # Convert stereo to mono by taking every other sample
+                        mono_frames = bytearray()
+                        for i in range(0, len(frames), 4):  # 4 bytes = 2 samples of 16-bit
+                            if i + 1 < len(frames):
+                                mono_frames.extend(frames[i:i+2])  # Take left channel
+                        frames = bytes(mono_frames)
+                        print(f"Converted stereo to mono, new size: {len(frames)} bytes")
+                    
+                    return frames
+                    
+            except Exception as wav_error:
+                print(f"Failed to parse WAV file: {wav_error}")
+                return audio_data
+        else:
+            print("Not a WAV file, returning original data")
+            # For MP3 or other formats, return as-is for now
+            # Vapi might be able to handle MP3 directly, or we'll need external tools
+            return audio_data
+            
+    except Exception as e:
+        print(f"Error in convert_audio_to_pcm: {e}")
+        # Return original data as fallback
+        return audio_data
 
 @app.route("/tts", methods=["POST"])
 def tts():
@@ -83,29 +146,18 @@ def tts():
             # Demo mode: return a simple mock audio response
             print(f"TTS completed (DEMO): {request_id} | Duration: {time.time() - start_time:.2f}s")
             
-            # Create a simple mock audio file (silence)
-            import wave
-            import io
-            
-            # Create a short silence audio file
+            # Create a simple mock PCM audio (silence)
             duration = 2.0  # 2 seconds
             frames = int(duration * sample_rate)
             
-            # Create WAV file in memory
-            wav_buffer = io.BytesIO()
-            with wave.open(wav_buffer, 'wb') as wav_file:
-                wav_file.setnchannels(1)  # Mono
-                wav_file.setsampwidth(2)  # 16-bit
-                wav_file.setframerate(sample_rate)
-                wav_file.writeframes(b'\x00\x00' * frames)  # Silence
-            
-            wav_buffer.seek(0)
+            # Create raw PCM data (16-bit mono silence)
+            pcm_data = b'\x00\x00' * frames  # 2 bytes per frame (16-bit)
             
             return Response(
-                wav_buffer.read(),
-                content_type="audio/wav",
+                pcm_data,
+                content_type="application/octet-stream",
                 headers={
-                    "Content-Disposition": f"attachment; filename=demo_audio_{request_id[:8]}.wav"
+                    "Content-Length": str(len(pcm_data))
                 }
             )
         else:
@@ -168,16 +220,27 @@ def tts():
                     if not audio_url:
                         return jsonify({"error": "Missing audioUrl in Deepdub response"}), 500
 
-                    # Stream audio from Deepdub's audioUrl
+                    # Download audio from Deepdub's audioUrl
                     audio_response = requests.get(audio_url, stream=True)
                     if audio_response.status_code != 200:
                         return jsonify({"error": "Failed to fetch audio from audioUrl"}), 500
 
+                    # Get the audio data
+                    audio_data = audio_response.content
+                    print(f"Downloaded audio data: {len(audio_data)} bytes")
+                    
+                    # Convert to PCM
+                    pcm_data = convert_audio_to_pcm(audio_data, sample_rate)
+                    print(f"Converted to PCM: {len(pcm_data)} bytes")
+
                     print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
 
                     return Response(
-                        audio_response.iter_content(chunk_size=4096),
-                        content_type="application/octet-stream"
+                        pcm_data,
+                        content_type="application/octet-stream",
+                        headers={
+                            "Content-Length": str(len(pcm_data))
+                        }
                     )
                     
                 except ValueError as json_error:
@@ -190,14 +253,18 @@ def tts():
                 print(f"Received direct audio response: {content_type}")
                 print(f"Audio content length: {len(r.content)} bytes")
                 
+                # Convert to PCM
+                pcm_data = convert_audio_to_pcm(r.content, sample_rate)
+                print(f"Converted to PCM: {len(pcm_data)} bytes")
+                
                 print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
                 
-                # Return the audio directly
+                # Return the PCM data
                 return Response(
-                    r.content,
-                    content_type=content_type,
+                    pcm_data,
+                    content_type="application/octet-stream",
                     headers={
-                        "Content-Disposition": f"attachment; filename=audio_{request_id[:8]}.mp3"
+                        "Content-Length": str(len(pcm_data))
                     }
                 )
             else:
