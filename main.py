@@ -39,25 +39,27 @@ else:
 
 # Check if pydub is available for audio conversion
 def check_pydub_available():
-    """Check if pydub is available and can handle MP3"""
+    """Check if pydub is available and can handle audio conversion"""
     try:
         from pydub import AudioSegment
-        # Test if we can create a simple audio segment
-        AudioSegment.silent(duration=100)
+        # Test if we can create a simple audio segment (this will fail if dependencies are missing)
+        test_audio = AudioSegment.silent(duration=100)
         return True
     except ImportError:
         return False
     except Exception:
-        # pydub might be installed but missing audio codecs
+        # pydub might be installed but missing dependencies (ffmpeg, etc.)
         return False
 
 # Check pydub availability at startup
 PYDUB_AVAILABLE = check_pydub_available()
 if not PYDUB_AVAILABLE:
-    print("ℹ️  pydub not available - using WAV-only audio processing")
-    print("   WAV files will be processed natively, other formats returned as-is")
+    print("⚠️  pydub not available or missing dependencies!")
+    print("   For full MP3 support, install: pip install pydub")
+    print("   And ensure ffmpeg is available on the system")
+    print("   WAV files will still be processed natively")
 else:
-    print("✅ pydub found - MP3 to PCM conversion available")
+    print("✅ pydub found - full audio conversion available")
 
 VALID_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100]
 
@@ -120,60 +122,62 @@ def convert_audio_to_pcm(audio_data, sample_rate=16000):
                     
             except Exception as wav_error:
                 print(f"Failed to parse WAV file with wave module: {wav_error}")
-                # Fall through to pydub processing below if available
+                print("Falling back to pydub for WAV processing")
+                # Fall through to pydub processing below
         
-        # Check if it's an MP3 file
-        elif audio_data.startswith(b'ID3') or audio_data.startswith(b'\xff\xfb') or audio_data.startswith(b'\xff\xfa'):
-            print("Detected MP3 format")
+        # For all other formats (MP3, or WAV that failed above), use pydub
+        if not PYDUB_AVAILABLE:
+            print("pydub not available - cannot convert audio to PCM")
+            print("Returning original audio data (Vapi may not support this)")
+            return audio_data
+        
+        try:
+            from pydub import AudioSegment
             
-            if not PYDUB_AVAILABLE:
-                print("MP3 detected but pydub not available")
-                print("Returning original MP3 data - VAPI may handle it directly")
-                return audio_data
+            print(f"Using pydub to convert audio to PCM (target: {sample_rate}Hz, 16-bit, mono)")
             
-            # Try pydub for MP3 conversion
-            try:
-                from pydub import AudioSegment
-                
-                print(f"Using pydub to convert MP3 to PCM (target: {sample_rate}Hz, 16-bit, mono)")
-                
-                # Load MP3 from bytes using pydub
-                audio_buffer = io.BytesIO(audio_data)
+            # Load audio from bytes using pydub
+            audio_buffer = io.BytesIO(audio_data)
+            
+            # Try to detect format and load
+            if audio_data.startswith(b'ID3') or audio_data.startswith(b'\xff\xfb') or audio_data.startswith(b'\xff\xfa'):
+                print("Loading as MP3")
                 audio = AudioSegment.from_mp3(audio_buffer)
-                
-                print(f"Original MP3: {audio.channels} channels, {audio.frame_rate}Hz, {audio.sample_width * 8}-bit")
-                
-                # Convert to target sample rate
-                if audio.frame_rate != sample_rate:
-                    print(f"Resampling from {audio.frame_rate}Hz to {sample_rate}Hz")
-                    audio = audio.set_frame_rate(sample_rate)
-                
-                # Convert to mono if stereo
-                if audio.channels > 1:
-                    print("Converting to mono")
-                    audio = audio.set_channels(1)
-                
-                # Convert to 16-bit
-                if audio.sample_width != 2:
-                    print(f"Converting from {audio.sample_width * 8}-bit to 16-bit")
-                    audio = audio.set_sample_width(2)
-                
-                # Export as raw PCM data
-                pcm_buffer = io.BytesIO()
-                audio.export(pcm_buffer, format="raw")
-                pcm_data = pcm_buffer.getvalue()
-                
-                print(f"Successfully converted MP3 to PCM: {len(pcm_data)} bytes")
-                return pcm_data
-                
-            except Exception as pydub_error:
-                print(f"Failed to convert MP3 with pydub: {pydub_error}")
-                print("Returning original MP3 data as fallback")
-                return audio_data
-        
-        else:
-            print("Unknown audio format, returning original data")
-            print("VAPI may be able to handle the original format")
+            elif audio_data.startswith(b'RIFF') and b'WAVE' in audio_data[:12]:
+                print("Loading as WAV")
+                audio = AudioSegment.from_wav(audio_buffer)
+            else:
+                print("Unknown format, trying auto-detection")
+                audio = AudioSegment.from_file(audio_buffer)
+            
+            print(f"Original audio: {audio.channels} channels, {audio.frame_rate}Hz, {audio.sample_width * 8}-bit")
+            
+            # Convert to target sample rate
+            if audio.frame_rate != sample_rate:
+                print(f"Resampling from {audio.frame_rate}Hz to {sample_rate}Hz")
+                audio = audio.set_frame_rate(sample_rate)
+            
+            # Convert to mono if stereo
+            if audio.channels > 1:
+                print("Converting to mono")
+                audio = audio.set_channels(1)
+            
+            # Convert to 16-bit
+            if audio.sample_width != 2:
+                print(f"Converting from {audio.sample_width * 8}-bit to 16-bit")
+                audio = audio.set_sample_width(2)
+            
+            # Export as raw PCM data
+            pcm_buffer = io.BytesIO()
+            audio.export(pcm_buffer, format="raw")
+            pcm_data = pcm_buffer.getvalue()
+            
+            print(f"Successfully converted to PCM: {len(pcm_data)} bytes")
+            return pcm_data
+            
+        except Exception as pydub_error:
+            print(f"Failed to convert audio with pydub: {pydub_error}")
+            print("Returning original audio data as fallback")
             return audio_data
             
     except Exception as e:

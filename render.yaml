@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: deepdub-vapi-proxy
+    runtime: docker
+    plan: starter  # Change to 'standard' for production
+    branch: main
+    healthCheckPath: /
+    envVars:
+      - key: DEEPDUB_API_KEY
+        sync: false  # Set this in Render dashboard
+      - key: DEEPDUB_VOICE_PROMPT_ID
+        sync: false  # Set this in Render dashboard
+      - key: VAPI_SECRET
+        value: deepdub-secret-2025  # Default value
+      - key: DEMO_MODE
+        value: false
+      - key: PORT
+        value: 5000
