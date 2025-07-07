@@ -5,6 +5,8 @@ services:
     plan: starter  # Change to 'standard' for production
     branch: main
     healthCheckPath: /
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
     envVars:
       - key: DEEPDUB_API_KEY
         sync: false  # Set this in Render dashboard
