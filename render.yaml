@@ -2,7 +2,7 @@ services:
   - type: web
     name: deepdub-vapi-proxy
     runtime: docker
-    plan: starter  # Change to 'standard' for production
+    plan: standard  # Using standard plan for Docker support
     branch: main
     healthCheckPath: /
     dockerfilePath: ./Dockerfile
