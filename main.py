@@ -63,6 +63,70 @@ else:
 
 VALID_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100]
 
+def apply_nikud(text):
+    """
+    Apply Hebrew diacritization (nikud) to text using Dicta Nakdan API.
+    
+    Args:
+        text: Hebrew text to diacritize
+    
+    Returns:
+        Diacritized text or original text if API fails
+    """
+    try:
+        print(f"Applying nikud to text: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+        
+        # Dicta Nakdan API endpoint
+        nakdan_url = "https://nakdan-1.loadbalancer.dicta.org.il/addnikud"
+        
+        # Prepare payload
+        payload = {
+            "data": text,
+            "corpus": "wiki",
+            "keep_emojis": True
+        }
+        
+        print(f"Sending request to Dicta Nakdan API...")
+        
+        # Make request with timeout
+        response = requests.post(
+            nakdan_url,
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=10  # 10 second timeout
+        )
+        
+        if response.status_code == 200:
+            result = response.json()
+            print(f"Nakdan API response status: {response.status_code}")
+            print(f"Response keys: {list(result.keys()) if isinstance(result, dict) else 'Not a dict'}")
+            
+            # Extract diacritized text - try "nikud_text" first, fallback to "data"
+            nikud_text = result.get("nikud_text") or result.get("data")
+            
+            if nikud_text and nikud_text != text:
+                print(f"✅ Successfully applied nikud")
+                print(f"Original: '{text[:50]}{'...' if len(text) > 50 else ''}'")
+                print(f"With nikud: '{nikud_text[:50]}{'...' if len(nikud_text) > 50 else ''}'")
+                return nikud_text
+            else:
+                print("⚠️ Nakdan API returned same text or empty result, using original")
+                return text
+        else:
+            print(f"❌ Nakdan API error: {response.status_code}")
+            print(f"Response: {response.text[:200]}...")
+            return text
+            
+    except requests.exceptions.Timeout:
+        print("⚠️ Nakdan API timeout, using original text")
+        return text
+    except requests.exceptions.RequestException as e:
+        print(f"⚠️ Nakdan API request failed: {e}, using original text")
+        return text
+    except Exception as e:
+        print(f"⚠️ Error in apply_nikud: {e}, using original text")
+        return text
+
 def convert_audio_to_pcm(audio_data, sample_rate=16000):
     """
     Convert audio data to raw PCM format that Vapi expects.
@@ -218,6 +282,9 @@ def tts():
     print(f"API Key present: {bool(DEEPDUB_API_KEY)}")
     print(f"Voice Prompt ID present: {bool(VOICE_PROMPT_ID)}")
 
+    # Apply Hebrew diacritization (nikud) to the text
+    text_with_nikud = apply_nikud(text)
+
     # Check if required environment variables are set (unless in demo mode)
     if not DEMO_MODE:
         if not DEEPDUB_API_KEY:
@@ -251,7 +318,7 @@ def tts():
             # Real mode: Call Deepdub TTS
             deepdub_payload = {
                 "model": "dd-etts-1.1",
-                "targetText": text,
+                "targetText": text_with_nikud,  # Use diacritized text
                 "locale": "he-IL",
                 "voicePromptId": VOICE_PROMPT_ID
             }
