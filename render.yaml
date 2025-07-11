@@ -3,7 +3,7 @@ services:
     name: elevenlabs-vapi-proxy
     runtime: docker
     plan: standard  # Using standard plan for Docker support
-    branch: main
+    branch: elevenLabsModel
     healthCheckPath: /
     dockerfilePath: ./Dockerfile
     dockerContext: .
