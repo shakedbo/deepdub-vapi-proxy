@@ -405,7 +405,7 @@ def tts():
 @app.route("/")
 def root():
     status = "🎭 DEMO MODE" if DEMO_MODE else "🚀 PRODUCTION MODE"
-    return f"ElevenLabs TTS Proxy with streaming is running. {status}"
+    return f"ElevenLabs TTS Proxy v2.1 is running. {status}"
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
