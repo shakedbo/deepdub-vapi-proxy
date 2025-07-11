@@ -37,11 +37,11 @@ test_text = "שלום עולם, זהו מבחן של המערכת."
 print(f"\nTesting ElevenLabs API with Hebrew text: '{test_text}'")
 
 try:
-    # Generate audio following official example pattern
-    audio = client.generate(
+    # Generate audio following official example pattern for v2+ SDK
+    audio = client.text_to_speech.convert(
         text=test_text,
-        voice=ELEVENLABS_VOICE_ID,
-        model=ELEVENLABS_MODEL_ID,
+        voice_id=ELEVENLABS_VOICE_ID,
+        model_id=ELEVENLABS_MODEL_ID,
         output_format="pcm_16000"  # PCM format for VAPI
     )
     

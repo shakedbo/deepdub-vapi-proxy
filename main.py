@@ -337,11 +337,11 @@ def tts():
                 print(f"Using Voice ID: {ELEVENLABS_VOICE_ID}")
                 print(f"Using Model ID: {ELEVENLABS_MODEL_ID}")
                 
-                # Follow official ElevenLabs example pattern
-                audio = elevenlabs_client.generate(
+                # Follow official ElevenLabs example pattern for v2+ SDK
+                audio = elevenlabs_client.text_to_speech.convert(
                     text=text_with_nikud,  # Use the text with nikud
-                    voice=ELEVENLABS_VOICE_ID,
-                    model=ELEVENLABS_MODEL_ID,
+                    voice_id=ELEVENLABS_VOICE_ID,
+                    model_id=ELEVENLABS_MODEL_ID,
                     output_format=f"pcm_{sample_rate}"  # Direct PCM for VAPI
                 )
                 
@@ -373,10 +373,10 @@ def tts():
                     # Try fallback to multilingual v2
                     try:
                         print("🔄 Attempting fallback to eleven_multilingual_v2...")
-                        fallback_audio = elevenlabs_client.generate(
+                        fallback_audio = elevenlabs_client.text_to_speech.convert(
                             text=text_with_nikud,
-                            voice=ELEVENLABS_VOICE_ID,
-                            model="eleven_multilingual_v2",
+                            voice_id=ELEVENLABS_VOICE_ID,
+                            model_id="eleven_multilingual_v2",
                             output_format=f"pcm_{sample_rate}"
                         )
                         
