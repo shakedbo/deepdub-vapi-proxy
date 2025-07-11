@@ -1,12 +1,12 @@
-# Use Python 3.11 (more stable than 3.13 for audio libraries)
+# Use Python 3.11 (stable and compatible with ElevenLabs SDK)
 FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies including ffmpeg
+# Install system dependencies (minimal - no ffmpeg needed for direct PCM)
+# ElevenLabs returns raw PCM directly, eliminating need for audio conversion
 RUN apt-get update && apt-get install -y \
-    ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

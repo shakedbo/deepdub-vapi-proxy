@@ -8,7 +8,7 @@ import io
 import wave
 import struct
 import tempfile
-from elevenlabs import ElevenLabs
+from elevenlabs.client import ElevenLabs
 
 # Load environment variables from .env file
 load_dotenv()
@@ -26,8 +26,10 @@ VAPI_SECRET = os.getenv("VAPI_SECRET", "elevenlabs-secret-2025")  # Default valu
 # Demo mode for testing without real API credentials
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 
-# Initialize ElevenLabs client
-elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY) if ELEVENLABS_API_KEY else None
+# Initialize ElevenLabs client following official documentation
+elevenlabs_client = ElevenLabs(
+    api_key=ELEVENLABS_API_KEY
+) if ELEVENLABS_API_KEY else None
 
 # Check required environment variables
 if not ELEVENLABS_API_KEY and not DEMO_MODE:
@@ -330,24 +332,27 @@ def tts():
             print(f"Using Model ID: {ELEVENLABS_MODEL_ID}")
             
             try:
-                # Generate audio using ElevenLabs API
-                audio_data = elevenlabs_client.text_to_speech.convert(
-                    voice_id=ELEVENLABS_VOICE_ID,
+                # Generate audio using ElevenLabs following official documentation
+                print(f"Calling ElevenLabs TTS API for Hebrew text")
+                print(f"Using Voice ID: {ELEVENLABS_VOICE_ID}")
+                print(f"Using Model ID: {ELEVENLABS_MODEL_ID}")
+                
+                # Follow official ElevenLabs example pattern
+                audio = elevenlabs_client.text_to_speech.convert(
                     text=text_with_nikud,  # Use the text with nikud
-                    model_id=ELEVENLABS_MODEL_ID
+                    voice_id=ELEVENLABS_VOICE_ID,
+                    model_id=ELEVENLABS_MODEL_ID,
+                    output_format=f"pcm_{sample_rate}"  # Direct PCM for VAPI
                 )
                 
-                # Convert iterator to bytes
-                audio_bytes = b''.join(audio_data)
-                print(f"Received audio data from ElevenLabs: {len(audio_bytes)} bytes")
-                
-                # Convert to PCM for VAPI
-                pcm_data = convert_audio_to_pcm(audio_bytes, sample_rate)
-                print(f"Converted to PCM: {len(pcm_data)} bytes")
+                # Convert audio generator to bytes (following official example)
+                pcm_data = b"".join(audio)
+                print(f"✅ Received PCM data directly from ElevenLabs: {len(pcm_data)} bytes")
+                print("✅ No audio conversion needed - direct PCM to VAPI!")
                 
                 print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
                 
-                # Return the PCM data
+                # Return the PCM data directly
                 return Response(
                     pcm_data,
                     content_type="application/octet-stream",
@@ -357,8 +362,41 @@ def tts():
                 )
                 
             except Exception as api_error:
-                print(f"ElevenLabs API error: {api_error}")
-                return jsonify({"error": f"ElevenLabs TTS failed: {str(api_error)}"}), 500
+                error_msg = str(api_error)
+                print(f"ElevenLabs API error with {ELEVENLABS_MODEL_ID}: {error_msg}")
+                
+                # If v3 access denied, suggest contacting sales
+                if "model_access_denied" in error_msg and "v3" in ELEVENLABS_MODEL_ID:
+                    print("⚠️  Eleven v3 access denied - contact sales@elevenlabs.io for Hebrew support")
+                    print("💡 Fallback: Try eleven_multilingual_v2 temporarily (limited Hebrew support)")
+                    
+                    # Try fallback to multilingual v2
+                    try:
+                        print("🔄 Attempting fallback to eleven_multilingual_v2...")
+                        fallback_audio = elevenlabs_client.text_to_speech.convert(
+                            text=text_with_nikud,
+                            voice_id=ELEVENLABS_VOICE_ID,
+                            model_id="eleven_multilingual_v2",
+                            output_format=f"pcm_{sample_rate}"
+                        )
+                        
+                        pcm_data = b"".join(fallback_audio)
+                        print(f"✅ Fallback successful: {len(pcm_data)} bytes (limited Hebrew quality)")
+                        
+                        return Response(
+                            pcm_data,
+                            content_type="application/octet-stream",
+                            headers={
+                                "Content-Length": str(len(pcm_data))
+                            }
+                        )
+                    except Exception as fallback_error:
+                        print(f"❌ Fallback also failed: {fallback_error}")
+                
+                return jsonify({
+                    "error": f"ElevenLabs TTS failed: {error_msg}",
+                    "suggestion": "Contact sales@elevenlabs.io for Eleven v3 access for Hebrew support"
+                }), 500
 
     except Exception as e:
         print(f"TTS failed: {request_id} | Error: {str(e)}")
