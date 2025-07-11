@@ -8,7 +8,7 @@ import io
 import wave
 import struct
 import tempfile
-from elevenlabs.client import ElevenLabs
+from elevenlabs import ElevenLabs
 
 # Load environment variables from .env file
 load_dotenv()
@@ -338,10 +338,10 @@ def tts():
                 print(f"Using Model ID: {ELEVENLABS_MODEL_ID}")
                 
                 # Follow official ElevenLabs example pattern
-                audio = elevenlabs_client.text_to_speech.convert(
+                audio = elevenlabs_client.generate(
                     text=text_with_nikud,  # Use the text with nikud
-                    voice_id=ELEVENLABS_VOICE_ID,
-                    model_id=ELEVENLABS_MODEL_ID,
+                    voice=ELEVENLABS_VOICE_ID,
+                    model=ELEVENLABS_MODEL_ID,
                     output_format=f"pcm_{sample_rate}"  # Direct PCM for VAPI
                 )
                 
@@ -373,10 +373,10 @@ def tts():
                     # Try fallback to multilingual v2
                     try:
                         print("🔄 Attempting fallback to eleven_multilingual_v2...")
-                        fallback_audio = elevenlabs_client.text_to_speech.convert(
+                        fallback_audio = elevenlabs_client.generate(
                             text=text_with_nikud,
-                            voice_id=ELEVENLABS_VOICE_ID,
-                            model_id="eleven_multilingual_v2",
+                            voice=ELEVENLABS_VOICE_ID,
+                            model="eleven_multilingual_v2",
                             output_format=f"pcm_{sample_rate}"
                         )
                         
