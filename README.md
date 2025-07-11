@@ -1,13 +1,13 @@
-# Deepdub TTS Proxy for VAPI
+# ElevenLabs TTS Proxy for VAPI
 
-This version is compatible with VAPI's custom-voice integration format. It converts audio from Deepdub API to raw PCM format that VAPI expects.
+This version is compatible with VAPI's custom-voice integration format. It converts audio from ElevenLabs API to raw PCM format that VAPI expects.
 
 ## Features
 
-- ✅ Converts WAV audio to raw PCM (16-bit, mono) natively
+- ✅ Converts MP3 audio from ElevenLabs to raw PCM (16-bit, mono) for VAPI
 - ✅ Full MP3 support via pydub + ffmpeg
 - ✅ Demo mode for testing without real API credentials
-- ✅ Supports both Deepdub response formats (JSON with audioUrl and direct audio)
+- ✅ Hebrew text diacritization (nikud) via Dicta Nakdan API
 - ✅ Proper error handling and logging
 - ✅ Graceful fallback when pydub/ffmpeg not available
 
@@ -56,9 +56,10 @@ Most cloud platforms support ffmpeg through buildpacks or packages. Check your p
 
 ## Environment Variables
 
-- `DEEPDUB_API_KEY` - Your Deepdub API key
-- `DEEPDUB_VOICE_PROMPT_ID` - Voice prompt ID from Deepdub
-- `VAPI_SECRET` - Secret for VAPI authentication (default: deepdub-secret-2025)
+- `ELEVENLABS_API_KEY` - Your ElevenLabs API key
+- `ELEVENLABS_VOICE_ID` - Voice ID from ElevenLabs
+- `ELEVENLABS_MODEL_ID` - Model ID (default: eleven_multilingual_v2)
+- `VAPI_SECRET` - Secret for VAPI authentication (default: elevenlabs-secret-2025)
 - `DEMO_MODE` - Set to "true" for testing without real API calls
 
 ## Installation
@@ -85,8 +86,9 @@ This proxy includes a Dockerfile with ffmpeg pre-installed for seamless cloud de
 
 2. **Configure Environment Variables in Render Dashboard:**
    ```
-   DEEPDUB_API_KEY=your_api_key_here
-   DEEPDUB_VOICE_PROMPT_ID=your_voice_prompt_id_here
+   ELEVENLABS_API_KEY=your_api_key_here
+   ELEVENLABS_VOICE_ID=your_voice_id_here
+   ELEVENLABS_MODEL_ID=eleven_multilingual_v2
    VAPI_SECRET=your_custom_secret
    ```
 
@@ -106,20 +108,21 @@ For local development or other platforms:
 
 **Build locally:**
 ```bash
-docker build -t deepdub-vapi-proxy .
+docker build -t elevenlabs-vapi-proxy .
 ```
 
 **Run locally:**
 ```bash
 docker run -p 5000:5000 \
-  -e DEEPDUB_API_KEY=your_key \
-  -e DEEPDUB_VOICE_PROMPT_ID=your_prompt_id \
-  deepdub-vapi-proxy
+  -e ELEVENLABS_API_KEY=your_key \
+  -e ELEVENLABS_VOICE_ID=your_voice_id \
+  -e ELEVENLABS_MODEL_ID=eleven_multilingual_v2 \
+  elevenlabs-vapi-proxy
 ```
 
 **Run with demo mode:**
 ```bash
-docker run -p 5000:5000 -e DEMO_MODE=true deepdub-vapi-proxy
+docker run -p 5000:5000 -e DEMO_MODE=true elevenlabs-vapi-proxy
 ```
 
 **Using Docker Compose (recommended for development):**
@@ -177,8 +180,9 @@ curl -X POST http://your-render-url.com/tts \
 
 1. Click the button above
 2. Set your environment variables:
-   - `DEEPDUB_API_KEY`
-   - `DEEPDUB_VOICE_PROMPT_ID`
+   - `ELEVENLABS_API_KEY`
+   - `ELEVENLABS_VOICE_ID`
+   - `ELEVENLABS_MODEL_ID`
    - `VAPI_SECRET` (optional)
 3. Deploy!
 

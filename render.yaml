@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: deepdub-vapi-proxy
+    name: elevenlabs-vapi-proxy
     runtime: docker
     plan: standard  # Using standard plan for Docker support
     branch: main
@@ -8,12 +8,14 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
     envVars:
-      - key: DEEPDUB_API_KEY
+      - key: ELEVENLABS_API_KEY
         sync: false  # Set this in Render dashboard
-      - key: DEEPDUB_VOICE_PROMPT_ID
+      - key: ELEVENLABS_VOICE_ID
         sync: false  # Set this in Render dashboard
+      - key: ELEVENLABS_MODEL_ID
+        value: eleven_multilingual_v2  # Default value
       - key: VAPI_SECRET
-        value: deepdub-secret-2025  # Default value
+        value: elevenlabs-secret-2025  # Default value
       - key: DEMO_MODE
         value: false
       - key: PORT

@@ -1,15 +1,16 @@
 version: '3.8'
 
 services:
-  deepdub-proxy:
+  elevenlabs-proxy:
     build: .
     ports:
       - "5000:5000"
     environment:
       - DEMO_MODE=true
       # Uncomment and set for production:
-      # - DEEPDUB_API_KEY=your_api_key_here
-      # - DEEPDUB_VOICE_PROMPT_ID=your_voice_prompt_id_here
+      # - ELEVENLABS_API_KEY=your_api_key_here
+      # - ELEVENLABS_VOICE_ID=your_voice_id_here
+      # - ELEVENLABS_MODEL_ID=eleven_multilingual_v2
       # - VAPI_SECRET=your_custom_secret
     restart: unless-stopped
     healthcheck:

@@ -8,34 +8,43 @@ import io
 import wave
 import struct
 import tempfile
+from elevenlabs import ElevenLabs
 
 # Load environment variables from .env file
 load_dotenv()
 
 app = Flask(__name__)
 
-DEEPDUB_API_KEY = os.getenv("DEEPDUB_API_KEY")
-VOICE_PROMPT_ID = os.getenv("DEEPDUB_VOICE_PROMPT_ID")
-VAPI_SECRET = os.getenv("VAPI_SECRET", "deepdub-secret-2025")  # Default value for testing
+# ElevenLabs configuration
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID")
+ELEVENLABS_MODEL_ID = os.getenv("ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")  # Default model
+
+# VAPI configuration
+VAPI_SECRET = os.getenv("VAPI_SECRET", "elevenlabs-secret-2025")  # Default value for testing
 
 # Demo mode for testing without real API credentials
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 
+# Initialize ElevenLabs client
+elevenlabs_client = ElevenLabs(api_key=ELEVENLABS_API_KEY) if ELEVENLABS_API_KEY else None
+
 # Check required environment variables
-if not DEEPDUB_API_KEY and not DEMO_MODE:
-    print("WARNING: DEEPDUB_API_KEY environment variable not set!")
+if not ELEVENLABS_API_KEY and not DEMO_MODE:
+    print("WARNING: ELEVENLABS_API_KEY environment variable not set!")
     print("Please set it before running the proxy, or set DEMO_MODE=true for testing.")
     
-if not VOICE_PROMPT_ID and not DEMO_MODE:
-    print("WARNING: DEEPDUB_VOICE_PROMPT_ID environment variable not set!")
+if not ELEVENLABS_VOICE_ID and not DEMO_MODE:
+    print("WARNING: ELEVENLABS_VOICE_ID environment variable not set!")
     print("Please set it before running the proxy, or set DEMO_MODE=true for testing.")
 
 if DEMO_MODE:
-    print("🎭 DEMO MODE: Running without real Deepdub API calls")
+    print("🎭 DEMO MODE: Running without real ElevenLabs API calls")
 else:
-    print("🚀 PRODUCTION MODE: Using real Deepdub API")
-    print(f"API Key: {DEEPDUB_API_KEY[:10]}..." if DEEPDUB_API_KEY else "API Key: None")
-    print(f"Voice Prompt ID: {VOICE_PROMPT_ID}")
+    print("🚀 PRODUCTION MODE: Using real ElevenLabs API")
+    print(f"API Key: {ELEVENLABS_API_KEY[:10]}..." if ELEVENLABS_API_KEY else "API Key: None")
+    print(f"Voice ID: {ELEVENLABS_VOICE_ID}")
+    print(f"Model ID: {ELEVENLABS_MODEL_ID}")
 
 # Check if pydub is available for audio conversion
 def check_pydub_available():
@@ -162,7 +171,7 @@ def convert_audio_to_pcm(audio_data, sample_rate=16000):
                     # Simple resample if needed (basic approach)
                     if framerate != sample_rate:
                         print(f"WAV sample rate ({framerate}Hz) doesn't match target ({sample_rate}Hz)")
-                        print("Note: Basic resampling - for best quality, ensure Deepdub returns correct sample rate")
+                        print("Note: Basic resampling - for best quality, ensure ElevenLabs returns correct sample rate")
                         # For now, we'll keep the original rate and let VAPI handle it
                         # Advanced resampling would require additional libraries
                     
@@ -279,21 +288,21 @@ def tts():
     print(f"TTS request started: {request_id} | Text length: {len(text)} | Sample rate: {sample_rate}Hz")
     print(f"Request text: '{text}'")
     print(f"DEMO_MODE: {DEMO_MODE}")
-    print(f"API Key present: {bool(DEEPDUB_API_KEY)}")
-    print(f"Voice Prompt ID present: {bool(VOICE_PROMPT_ID)}")
+    print(f"API Key present: {bool(ELEVENLABS_API_KEY)}")
+    print(f"Voice ID present: {bool(ELEVENLABS_VOICE_ID)}")
 
     # Apply Hebrew diacritization (nikud) to the text
     text_with_nikud = apply_nikud(text)
 
     # Check if required environment variables are set (unless in demo mode)
     if not DEMO_MODE:
-        if not DEEPDUB_API_KEY:
-            print(f"TTS failed: {request_id} | Missing DEEPDUB_API_KEY")
+        if not ELEVENLABS_API_KEY:
+            print(f"TTS failed: {request_id} | Missing ELEVENLABS_API_KEY")
             return jsonify({"error": "Server configuration error: Missing API key"}), 500
         
-        if not VOICE_PROMPT_ID:
-            print(f"TTS failed: {request_id} | Missing DEEPDUB_VOICE_PROMPT_ID")
-            return jsonify({"error": "Server configuration error: Missing voice prompt ID"}), 500
+        if not ELEVENLABS_VOICE_ID:
+            print(f"TTS failed: {request_id} | Missing ELEVENLABS_VOICE_ID")
+            return jsonify({"error": "Server configuration error: Missing voice ID"}), 500
 
     try:
         if DEMO_MODE:
@@ -315,100 +324,25 @@ def tts():
                 }
             )
         else:
-            # Real mode: Call Deepdub TTS
-            deepdub_payload = {
-                "model": "dd-etts-1.1",
-                "targetText": text_with_nikud,  # Use diacritized text
-                "locale": "he-IL",
-                "voicePromptId": VOICE_PROMPT_ID
-            }
-            
-            print(f"Sending request to Deepdub API: {deepdub_payload}")
-            print(f"Using API Key: {DEEPDUB_API_KEY[:10]}...")
-            print(f"API URL: https://restapi.deepdub.ai/tts")
+            # Real mode: Call ElevenLabs TTS
+            print(f"Calling ElevenLabs TTS API for text: '{text_with_nikud[:50]}{'...' if len(text_with_nikud) > 50 else ''}'")
+            print(f"Using Voice ID: {ELEVENLABS_VOICE_ID}")
+            print(f"Using Model ID: {ELEVENLABS_MODEL_ID}")
             
             try:
-                r = requests.post(
-                    "https://restapi.deepdub.ai/tts",
-                    headers={
-                        "Content-Type": "application/json",
-                        "x-api-key": DEEPDUB_API_KEY
-                    },
-                    json=deepdub_payload,
-                    timeout=25
+                # Generate audio using ElevenLabs API
+                audio_data = elevenlabs_client.text_to_speech.convert(
+                    voice_id=ELEVENLABS_VOICE_ID,
+                    text=text_with_nikud,  # Use the text with nikud
+                    model_id=ELEVENLABS_MODEL_ID
                 )
-            except requests.exceptions.RequestException as req_error:
-                print(f"Request failed: {req_error}")
-                return jsonify({"error": f"Network error: {str(req_error)}"}), 500
-
-            if r.status_code != 200:
-                print(f"Deepdub API error: {r.status_code}")
-                print(f"Response headers: {dict(r.headers)}")
-                print(f"Response content: {r.text}")
-                return jsonify({
-                    "error": f"Deepdub TTS failed with status {r.status_code}",
-                    "details": r.text
-                }), 500
-
-            print(f"Deepdub API response status: {r.status_code}")
-            print(f"Deepdub API response headers: {dict(r.headers)}")
-            print(f"Response content length: {len(r.text)}")
-            print(f"Deepdub API response content: {r.text[:500]}...")  # First 500 chars
-            
-            if not r.text.strip():
-                print("ERROR: Empty response from Deepdub API")
-                return jsonify({"error": "Empty response from Deepdub API"}), 500
-            
-            # Check if response is JSON
-            content_type = r.headers.get('content-type', '').lower()
-            print(f"Response content-type: {content_type}")
-            
-            if 'application/json' in content_type:
-                # JSON response with audioUrl (old format)
-                try:
-                    audio_json = r.json()
-                    print(f"Successfully parsed JSON response")
-                    print(f"JSON keys: {list(audio_json.keys()) if isinstance(audio_json, dict) else 'Not a dict'}")
-                    
-                    audio_url = audio_json.get("audioUrl")
-                    if not audio_url:
-                        return jsonify({"error": "Missing audioUrl in Deepdub response"}), 500
-
-                    # Download audio from Deepdub's audioUrl
-                    audio_response = requests.get(audio_url, stream=True)
-                    if audio_response.status_code != 200:
-                        return jsonify({"error": "Failed to fetch audio from audioUrl"}), 500
-
-                    # Get the audio data
-                    audio_data = audio_response.content
-                    print(f"Downloaded audio data: {len(audio_data)} bytes")
-                    
-                    # Convert to PCM
-                    pcm_data = convert_audio_to_pcm(audio_data, sample_rate)
-                    print(f"Converted to PCM: {len(pcm_data)} bytes")
-
-                    print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
-
-                    return Response(
-                        pcm_data,
-                        content_type="application/octet-stream",
-                        headers={
-                            "Content-Length": str(len(pcm_data))
-                        }
-                    )
-                    
-                except ValueError as json_error:
-                    print(f"Failed to parse JSON from Deepdub response: {json_error}")
-                    print(f"Raw response content: {r.text}")
-                    return jsonify({"error": f"Invalid JSON response from Deepdub API: {str(json_error)}", "raw_response": r.text[:200]}), 500
-                    
-            elif 'audio/' in content_type:
-                # Direct audio response (new format)
-                print(f"Received direct audio response: {content_type}")
-                print(f"Audio content length: {len(r.content)} bytes")
                 
-                # Convert to PCM
-                pcm_data = convert_audio_to_pcm(r.content, sample_rate)
+                # Convert iterator to bytes
+                audio_bytes = b''.join(audio_data)
+                print(f"Received audio data from ElevenLabs: {len(audio_bytes)} bytes")
+                
+                # Convert to PCM for VAPI
+                pcm_data = convert_audio_to_pcm(audio_bytes, sample_rate)
                 print(f"Converted to PCM: {len(pcm_data)} bytes")
                 
                 print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
@@ -421,11 +355,10 @@ def tts():
                         "Content-Length": str(len(pcm_data))
                     }
                 )
-            else:
-                # Unknown response format
-                print(f"ERROR: Unexpected content type: {content_type}")
-                print(f"Raw response: {r.text[:500]}")
-                return jsonify({"error": f"Deepdub API returned unexpected response type: {content_type}"}), 500
+                
+            except Exception as api_error:
+                print(f"ElevenLabs API error: {api_error}")
+                return jsonify({"error": f"ElevenLabs TTS failed: {str(api_error)}"}), 500
 
     except Exception as e:
         print(f"TTS failed: {request_id} | Error: {str(e)}")
@@ -434,7 +367,7 @@ def tts():
 @app.route("/")
 def root():
     status = "🎭 DEMO MODE" if DEMO_MODE else "🚀 PRODUCTION MODE"
-    return f"Deepdub TTS Proxy with streaming is running. {status}"
+    return f"ElevenLabs TTS Proxy with streaming is running. {status}"
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
