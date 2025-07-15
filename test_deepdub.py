@@ -1,77 +1,130 @@
-#!/usr/bin/env python3
 """
-Test script to debug Deepdub API issues
+Test script for Deepdub TTS proxy with VAPI format
 """
 import requests
 import json
-from dotenv import load_dotenv
-import os
 
-# Load environment variables
-load_dotenv()
-
-DEEPDUB_API_KEY = os.getenv("DEEPDUB_API_KEY")
-VOICE_PROMPT_ID = os.getenv("DEEPDUB_VOICE_PROMPT_ID")
-
-print("=== Deepdub API Test ===")
-print(f"API Key: {DEEPDUB_API_KEY[:10]}..." if DEEPDUB_API_KEY else "No API Key")
-print(f"Voice Prompt ID: {VOICE_PROMPT_ID}")
-
-if not DEEPDUB_API_KEY:
-    print("ERROR: No API key found!")
-    exit(1)
-
-if not VOICE_PROMPT_ID:
-    print("ERROR: No voice prompt ID found!")
-    exit(1)
-
-# Test payload
-payload = {
-    "model": "dd-etts-1.1",
-    "targetText": "שלום מה שלומך היום?",
-    "locale": "he-IL",
-    "voicePromptId": VOICE_PROMPT_ID
-}
-
-headers = {
-    "Content-Type": "application/json",
-    "x-api-key": DEEPDUB_API_KEY
-}
-
-print("\n=== Making API Request ===")
-print(f"URL: https://restapi.deepdub.ai/tts")
-print(f"Headers: {headers}")
-print(f"Payload: {json.dumps(payload, ensure_ascii=False, indent=2)}")
-
-try:
-    response = requests.post(
-        "https://restapi.deepdub.ai/tts",
-        headers=headers,
-        json=payload,
-        timeout=30
-    )
+def test_vapi_format():
+    """Test with VAPI message format"""
+    print("Testing VAPI format...")
     
-    print(f"\n=== Response ===")
-    print(f"Status Code: {response.status_code}")
-    print(f"Headers: {dict(response.headers)}")
-    print(f"Content Length: {len(response.text)}")
-    print(f"Raw Content: {response.text}")
+    url = "http://localhost:5000/tts"
     
-    if response.status_code == 200:
-        try:
-            json_response = response.json()
-            print(f"JSON Response: {json.dumps(json_response, indent=2)}")
-            
-            audio_url = json_response.get("audioUrl")
-            if audio_url:
-                print(f"Audio URL: {audio_url}")
-                print("✅ SUCCESS: API call worked!")
-            else:
-                print("❌ ERROR: No audioUrl in response")
-        except json.JSONDecodeError as e:
-            print(f"❌ JSON Decode Error: {e}")
-    else:
-        print(f"❌ API Error: {response.status_code}")
+    # VAPI format as specified
+    data = {
+        "message": {
+            "type": "voice-request",
+            "text": "שלום מה איתך היום איך אתה מרגיש?",  # Hebrew text from your example
+            "sampleRate": 24000
+        }
+    }
+    
+    try:
+        response = requests.post(url, json=data)
+        print(f"Status: {response.status_code}")
+        print(f"Content-Type: {response.headers.get('Content-Type')}")
+        print(f"Content-Length: {len(response.content)} bytes")
         
-except requests.exceptions.RequestException as e:
-    print(f"❌ Request Error: {e}")
+        if response.status_code == 200:
+            # Save the audio file for testing
+            with open("test_output.pcm", "wb") as f:
+                f.write(response.content)
+            print("✅ Test successful! Audio saved as test_output.pcm")
+            return True
+        else:
+            print(f"❌ Test failed: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Test error: {e}")
+        return False
+
+def test_simple_format():
+    """Test with simple text format"""
+    print("Testing simple format...")
+    
+    url = "http://localhost:5000/tts"
+    data = {"text": "Hello, this is a test of the Deepdub TTS service."}
+    
+    try:
+        response = requests.post(url, json=data)
+        print(f"Status: {response.status_code}")
+        print(f"Content-Type: {response.headers.get('Content-Type')}")
+        print(f"Content-Length: {len(response.content)} bytes")
+        
+        if response.status_code == 200:
+            print("✅ Simple format test successful!")
+            return True
+        else:
+            print(f"❌ Test failed: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ Test error: {e}")
+        return False
+
+def test_health():
+    """Test health endpoint"""
+    print("Testing health endpoint...")
+    
+    try:
+        response = requests.get("http://localhost:5000/health")
+        print(f"Status: {response.status_code}")
+        print(f"Response: {response.json()}")
+        return response.status_code == 200
+    except Exception as e:
+        print(f"❌ Health check error: {e}")
+        return False
+
+def test_aws_endpoint():
+    """Test AWS Lambda endpoint"""
+    print("Testing AWS Lambda endpoint...")
+    
+    url = "https://3wik39wypl.execute-api.us-east-1.amazonaws.com/tts"
+    
+    # VAPI format
+    data = {
+        "message": {
+            "type": "voice-request", 
+            "text": "שלום, זה בדיקה של שירות Deepdub",
+            "sampleRate": 24000
+        }
+    }
+    
+    try:
+        response = requests.post(url, json=data, timeout=30)
+        print(f"Status: {response.status_code}")
+        print(f"Content-Type: {response.headers.get('Content-Type')}")
+        print(f"Content-Length: {len(response.content)} bytes")
+        
+        if response.status_code == 200:
+            with open("aws_test_output.pcm", "wb") as f:
+                f.write(response.content)
+            print("✅ AWS test successful! Audio saved as aws_test_output.pcm")
+            return True
+        else:
+            print(f"❌ AWS test failed: {response.text}")
+            return False
+            
+    except Exception as e:
+        print(f"❌ AWS test error: {e}")
+        return False
+
+if __name__ == "__main__":
+    print("🧪 Testing Deepdub TTS Proxy\n")
+    
+    # Test health first
+    if test_health():
+        print("\n" + "="*50)
+        # Test VAPI format
+        test_vapi_format()
+        
+        print("\n" + "="*50)
+        # Test simple format  
+        test_simple_format()
+        
+        print("\n" + "="*50)
+        # Test AWS endpoint
+        test_aws_endpoint()
+    
+    print("\n✅ Tests completed!")

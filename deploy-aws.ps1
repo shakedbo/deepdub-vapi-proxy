@@ -12,8 +12,12 @@ $ROLE_NAME = "lambda-execution-role"
 if (Test-Path ".env") {
     Write-Host "📝 Loading environment variables from .env file..." -ForegroundColor Yellow
     Get-Content ".env" | ForEach-Object {
-        if ($_ -match "^([^#][^=]+)=(.*)$") {
-            [Environment]::SetEnvironmentVariable($matches[1], $matches[2])
+        if ($_ -match "^([^#]+)=(.*)$") {
+            $key = $matches[1].Trim()
+            $value = $matches[2].Trim()
+            if ($key -and $value) {
+                [Environment]::SetEnvironmentVariable($key, $value)
+            }
         }
     }
 } else {
@@ -59,7 +63,9 @@ $functionExists = $false
 try {
     aws lambda get-function --function-name $FUNCTION_NAME --region $REGION | Out-Null
     $functionExists = $true
-} catch {}
+} catch {
+    # Function doesn't exist
+}
 
 if ($functionExists) {
     Write-Host "📝 Updating existing function..." -ForegroundColor Green
@@ -69,7 +75,7 @@ if ($functionExists) {
     
     # Create IAM role if it doesn't exist
     Write-Host "🔐 Setting up IAM role..." -ForegroundColor Yellow
-    $rolePolicy = @"
+    $rolePolicy = @'
 {
     "Version": "2012-10-17",
     "Statement": [{
@@ -78,7 +84,7 @@ if ($functionExists) {
         "Action": "sts:AssumeRole"
     }]
 }
-"@
+'@
     
     try {
         aws iam create-role --role-name $ROLE_NAME --assume-role-policy-document $rolePolicy | Out-Null
@@ -122,7 +128,7 @@ $API_ID = ""
 # Check if API already exists
 $EXISTING_API = aws apigatewayv2 get-apis --region $REGION --query "Items[?Name=='deepdub-tts-api'].ApiId" --output text
 
-if ($EXISTING_API -and $EXISTING_API -ne "None") {
+if ($EXISTING_API -and $EXISTING_API -ne "None" -and $EXISTING_API -ne "") {
     Write-Host "📍 Using existing API Gateway: $EXISTING_API" -ForegroundColor Green
     $API_ID = $EXISTING_API
 } else {
@@ -159,11 +165,11 @@ Write-Host "✅ Deployment complete!" -ForegroundColor Green
 Write-Host "🔗 API Gateway URL: https://$API_ID.execute-api.$REGION.amazonaws.com" -ForegroundColor Cyan
 Write-Host "💰 Estimated cost: $1-5/month for typical usage" -ForegroundColor Green
 Write-Host ""
-Write-Host "🧪 Test your deployment:" -ForegroundColor Yellow
-Write-Host "curl -X POST https://$API_ID.execute-api.$REGION.amazonaws.com/tts \\" -ForegroundColor Gray
-Write-Host "  -H `"Content-Type: application/json`" \\" -ForegroundColor Gray
-Write-Host "  -H `"X-VAPI-SECRET: $VAPI_SECRET`" \\" -ForegroundColor Gray
-Write-Host "  -d '{`"message`":{`"type`":`"voice-request`",`"text`":`"שלום עולם`",`"sampleRate`":24000}}' \\" -ForegroundColor Gray
+Write-Host "🧪 Test your deployment with curl:" -ForegroundColor Yellow
+Write-Host "curl -X POST https://$API_ID.execute-api.$REGION.amazonaws.com/tts" -ForegroundColor Gray
+Write-Host "  -H 'Content-Type: application/json'" -ForegroundColor Gray
+Write-Host "  -H 'X-VAPI-SECRET: $VAPI_SECRET'" -ForegroundColor Gray
+Write-Host "  -d '{\"message\":{\"type\":\"voice-request\",\"text\":\"Hello World\",\"sampleRate\":24000}}'" -ForegroundColor Gray
 Write-Host "  --output test-audio.pcm" -ForegroundColor Gray
 Write-Host ""
 
