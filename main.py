@@ -14,9 +14,18 @@ import wave
 import json
 import base64
 import math
+import requests
 from flask import Flask, request, Response, jsonify
 from dotenv import load_dotenv
-from google.cloud import texttospeech
+from google.auth.transport.requests import Request
+from google.oauth2 import service_account
+
+# Try to import Google Cloud TTS, fall back to REST API if grpcio fails
+try:
+    from google.cloud import texttospeech
+    GRPC_AVAILABLE = True
+except ImportError:
+    GRPC_AVAILABLE = False
 
 load_dotenv()
 app = Flask(__name__)
@@ -27,8 +36,10 @@ VOICE_NAME = os.getenv("VOICE_NAME", "he-IL-Wavenet-D")
 VOICE_LANGUAGE = os.getenv("VOICE_LANGUAGE", "he-IL")
 DEMO_MODE = os.getenv("DEMO_MODE", "false").lower() == "true"
 
-# Initialize Google Cloud TTS client
+# Initialize Google Cloud TTS client or credentials
 tts_client = None
+credentials = None
+
 if not DEMO_MODE:
     try:
         if GOOGLE_CLOUD_CREDENTIALS_PATH:
@@ -36,26 +47,44 @@ if not DEMO_MODE:
             for path in [GOOGLE_CLOUD_CREDENTIALS_PATH, f"/tmp/{GOOGLE_CLOUD_CREDENTIALS_PATH}", f"./{GOOGLE_CLOUD_CREDENTIALS_PATH}"]:
                 if os.path.exists(path):
                     print(f"Found credentials file at: {path}")
-                    tts_client = texttospeech.TextToSpeechClient.from_service_account_file(path)
+                    
+                    if GRPC_AVAILABLE:
+                        tts_client = texttospeech.TextToSpeechClient.from_service_account_file(path)
+                        print(f"Google Cloud TTS client (gRPC) initialized successfully")
+                    else:
+                        credentials = service_account.Credentials.from_service_account_file(
+                            path, 
+                            scopes=['https://www.googleapis.com/auth/cloud-platform']
+                        )
+                        print(f"Google Cloud credentials (REST) initialized successfully")
                     break
             
-            if not tts_client:
-                print("Credentials file not found, trying default credentials...")
-                tts_client = texttospeech.TextToSpeechClient()
+            if not tts_client and not credentials:
+                if GRPC_AVAILABLE:
+                    print("Credentials file not found, trying default credentials...")
+                    tts_client = texttospeech.TextToSpeechClient()
+                else:
+                    print("Credentials file not found, switching to demo mode")
+                    DEMO_MODE = True
         else:
-            tts_client = texttospeech.TextToSpeechClient()
+            if GRPC_AVAILABLE:
+                tts_client = texttospeech.TextToSpeechClient()
+            else:
+                print("No credentials path specified, switching to demo mode")
+                DEMO_MODE = True
             
-        if tts_client:
-            print(f"Google Cloud TTS client initialized successfully")
+        if tts_client or credentials:
             print(f"Voice: {VOICE_NAME}, Language: {VOICE_LANGUAGE}")
+            print(f"Using {'gRPC' if GRPC_AVAILABLE else 'REST'} API")
         else:
             print("Failed to initialize TTS client, switching to demo mode")
             DEMO_MODE = True
             
     except Exception as e:
-        print(f"Error initializing Google Cloud TTS client: {str(e)}")
+        print(f"Error initializing Google Cloud TTS: {str(e)}")
         print("Switching to demo mode")
         tts_client = None
+        credentials = None
         DEMO_MODE = True
 else:
     print("DEMO MODE: Running without real Google Cloud TTS API calls")
@@ -84,6 +113,59 @@ def extract_pcm_from_wav(wav_data):
         print(f"Error extracting PCM from WAV: {e}")
         return None
 
+def synthesize_speech_rest_api(text, voice_name, language_code, sample_rate, credentials):
+    """Use Google Cloud TTS REST API to synthesize speech"""
+    try:
+        # Ensure credentials have a valid token
+        if not credentials.token or credentials.expired:
+            credentials.refresh(Request())
+        
+        print(f"Making REST API request to Google Cloud TTS")
+        print(f"Voice: {voice_name}, Language: {language_code}, Sample Rate: {sample_rate}")
+        
+        # Prepare the request payload
+        payload = {
+            "input": {"text": text},
+            "voice": {"languageCode": language_code, "name": voice_name},
+            "audioConfig": {
+                "audioEncoding": "LINEAR16",
+                "sampleRateHertz": sample_rate
+            }
+        }
+        
+        # Make the REST API call
+        url = "https://texttospeech.googleapis.com/v1/text:synthesize"
+        headers = {
+            "Authorization": f"Bearer {credentials.token}",
+            "Content-Type": "application/json"
+        }
+        
+        print(f"Sending request to: {url}")
+        response = requests.post(url, json=payload, headers=headers, timeout=30)
+        
+        print(f"Response status: {response.status_code}")
+        
+        if response.status_code == 200:
+            result = response.json()
+            if "audioContent" in result:
+                audio_content = base64.b64decode(result["audioContent"])
+                print(f"Successfully received audio content: {len(audio_content)} bytes")
+                return audio_content
+            else:
+                print(f"No audioContent in response: {result}")
+                return None
+        else:
+            print(f"TTS API error: {response.status_code}")
+            print(f"Response headers: {response.headers}")
+            print(f"Response body: {response.text}")
+            return None
+            
+    except Exception as e:
+        print(f"TTS REST API error: {str(e)}")
+        import traceback
+        print(f"Traceback: {traceback.format_exc()}")
+        return None
+
 @app.route('/tts', methods=['POST'])
 def tts():
     """Text-to-speech endpoint that returns PCM audio for VAPI"""
@@ -106,7 +188,7 @@ def tts():
         if not text:
             return jsonify({"error": "No text provided"}), 400
         
-        if DEMO_MODE or tts_client is None:
+        if DEMO_MODE or (tts_client is None and credentials is None):
             print("Demo mode: generating synthetic PCM audio")
             pcm_data = generate_demo_pcm(text, sample_rate=sample_rate)
             print(f"Demo PCM generated: {len(pcm_data)} bytes")
@@ -117,37 +199,51 @@ def tts():
                 headers={'Content-Type': 'audio/pcm', 'Content-Length': str(len(pcm_data))}
             )
         
-        # Production mode: Use Google Cloud TTS
+        # Production mode: Use Google Cloud TTS (gRPC or REST)
         print(f"Requesting TTS from Google Cloud with voice: {VOICE_NAME}")
         
         try:
-            synthesis_input = texttospeech.SynthesisInput(text=text)
-            voice = texttospeech.VoiceSelectionParams(language_code=VOICE_LANGUAGE, name=VOICE_NAME)
-            audio_config = texttospeech.AudioConfig(
-                audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-                sample_rate_hertz=sample_rate
-            )
+            audio_content = None
             
-            response = tts_client.synthesize_speech(
-                input=synthesis_input, voice=voice, audio_config=audio_config
-            )
-            
-            pcm_data = extract_pcm_from_wav(response.audio_content)
-            
-            if pcm_data:
-                print(f"Received PCM audio: {len(pcm_data)} bytes")
-                return Response(
-                    pcm_data,
-                    mimetype='audio/pcm',
-                    headers={'Content-Type': 'audio/pcm', 'Content-Length': str(len(pcm_data))}
+            if GRPC_AVAILABLE and tts_client:
+                # Use gRPC client (works on localhost)
+                synthesis_input = texttospeech.SynthesisInput(text=text)
+                voice = texttospeech.VoiceSelectionParams(language_code=VOICE_LANGUAGE, name=VOICE_NAME)
+                audio_config = texttospeech.AudioConfig(
+                    audio_encoding=texttospeech.AudioEncoding.LINEAR16,
+                    sample_rate_hertz=sample_rate
                 )
+                
+                response = tts_client.synthesize_speech(
+                    input=synthesis_input, voice=voice, audio_config=audio_config
+                )
+                audio_content = response.audio_content
+                print(f"Used gRPC API")
+                
+            elif credentials:
+                # Use REST API (works on Lambda)
+                audio_content = synthesize_speech_rest_api(text, VOICE_NAME, VOICE_LANGUAGE, sample_rate, credentials)
+                print(f"Used REST API")
+            
+            if audio_content:
+                pcm_data = extract_pcm_from_wav(audio_content)
+                
+                if pcm_data:
+                    print(f"Received PCM audio: {len(pcm_data)} bytes")
+                    return Response(
+                        pcm_data,
+                        mimetype='audio/pcm',
+                        headers={'Content-Type': 'audio/pcm', 'Content-Length': str(len(pcm_data))}
+                    )
+                else:
+                    print("PCM extraction failed, returning WAV data")
+                    return Response(
+                        audio_content,
+                        mimetype='audio/wav',
+                        headers={'Content-Type': 'audio/wav', 'Content-Length': str(len(audio_content))}
+                    )
             else:
-                print("PCM extraction failed, returning WAV data")
-                return Response(
-                    response.audio_content,
-                    mimetype='audio/wav',
-                    headers={'Content-Type': 'audio/wav', 'Content-Length': str(len(response.audio_content))}
-                )
+                return jsonify({"error": "TTS request failed"}), 500
                 
         except Exception as gcp_error:
             print(f"Google Cloud TTS error: {str(gcp_error)}")
@@ -163,10 +259,10 @@ def health():
     return jsonify({
         "status": "healthy",
         "demo_mode": DEMO_MODE,
-        "tts_provider": "Google Cloud Text-to-Speech",
+        "tts_provider": f"Google Cloud Text-to-Speech ({'gRPC' if GRPC_AVAILABLE else 'REST'} API)",
         "voice_name": VOICE_NAME,
         "voice_language": VOICE_LANGUAGE,
-        "client_initialized": tts_client is not None
+        "client_initialized": (tts_client is not None) or (credentials is not None)
     })
 
 @app.route('/', methods=['GET'])
