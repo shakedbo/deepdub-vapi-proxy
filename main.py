@@ -212,7 +212,11 @@ def tts():
             "supportedRates": VALID_SAMPLE_RATES
         }), 400
 
-    print(f"TTS request started: {request_id} | Text length: {len(text)} | Sample rate: {sample_rate}Hz")
+    # Set default speed to 1.3 for slightly faster, more natural speech
+    # Since VAPI doesn't send speed parameter, we use a faster default
+    speed = 1.3  # 30% faster than normal speed
+
+    print(f"TTS request started: {request_id} | Text length: {len(text)} | Sample rate: {sample_rate}Hz | Speed: {speed}x")
     print(f"Request text: '{text}'")
     print(f"DEMO_MODE: {DEMO_MODE}")
     print(f"API Key present: {bool(DEEPDUB_API_KEY)}")
@@ -253,7 +257,8 @@ def tts():
                 "model": "dd-etts-1.1",
                 "targetText": text,
                 "locale": "he-IL",
-                "voicePromptId": VOICE_PROMPT_ID
+                "voicePromptId": VOICE_PROMPT_ID,
+                "speed": speed  # Add speed control for faster speech
             }
             
             print(f"Sending request to Deepdub API: {deepdub_payload}")
