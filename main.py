@@ -254,10 +254,12 @@ def tts():
         else:
             # Real mode: Call Deepdub TTS
             deepdub_payload = {
-                "model": "dd-etts-1.1",
+                "model": "dd-etts-2.5",
                 "targetText": text,
                 "locale": "he-IL",
                 "voicePromptId": VOICE_PROMPT_ID,
+                "format": "mulaw",
+                "sampleRate": 8000,   # mulaw הוא בפועל 8k
                 "speed": speed  # Add speed control for faster speech
             }
             
