@@ -1,11 +1,12 @@
-# Use Python 3.11
-FROM python:3.11.10-slim
+# Use Python 3.11 (more stable than 3.13 for audio libraries)
+FROM python:3.11-slim
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (minimal for better performance)
+# Install system dependencies including ffmpeg
 RUN apt-get update && apt-get install -y \
+    ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
@@ -13,12 +14,7 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
-
-# Set environment variables for better performance
-ENV PYTHONUNBUFFERED=1
-ENV PYTHONDONTWRITEBYTECODE=1
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .

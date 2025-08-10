@@ -8,24 +8,6 @@ import io
 import wave
 import struct
 import tempfile
-import numpy as np
-
-# Try to import fast audio libraries
-try:
-    import soundfile as sf
-    SOUNDFILE_AVAILABLE = True
-    print("✅ soundfile found - ultra-fast audio processing available")
-except ImportError:
-    SOUNDFILE_AVAILABLE = False
-    print("⚠️  soundfile not available - install with: pip install soundfile")
-
-try:
-    import librosa
-    LIBROSA_AVAILABLE = True
-    print("✅ librosa found - advanced resampling available")
-except ImportError:
-    LIBROSA_AVAILABLE = False
-    print("⚠️  librosa not available - install with: pip install librosa")
 
 # Load environment variables from .env file
 load_dotenv()
@@ -82,42 +64,18 @@ else:
 VALID_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100]
 SAMPLE_RATE = 8000  # Default sample rate for PCM conversion
 
-# Performance monitoring
-import time
-from functools import lru_cache
-audio_conversion_stats = {
-    'total_conversions': 0,
-    'total_time': 0.0,
-    'fast_method_used': 0,
-    'fallback_method_used': 0
-}
-
-def convert_audio_to_pcm_fast(audio_data, target_sample_rate=SAMPLE_RATE):
+def convert_audio_to_pcm(audio_data, sample_rate=SAMPLE_RATE):
     """
-    Fast and simple audio conversion optimized for Deepdub mulaw format.
-    Prioritizes speed and audio quality for Hebrew speech.
+    Convert audio data to raw PCM format that Vapi expects.
+    
+    Supports WAV files natively. For MP3, uses pydub if available.
     
     Args:
-        audio_data: Raw audio bytes (mulaw from Deepdub)
-        target_sample_rate: Target sample rate (default 8000Hz)
+        audio_data: Raw audio bytes (MP3, WAV, etc.)
+        sample_rate: Target sample rate for PCM output (default 8000Hz)
     
     Returns:
-        Raw PCM bytes (16-bit, mono) 
-    """
-    if not audio_data or len(audio_data) == 0:
-        raise ValueError("Empty audio data provided")
-
-    print(f"Simple audio conversion: {len(audio_data)} bytes -> PCM {target_sample_rate}Hz")
-    
-    # For Deepdub mulaw format, the data is often already in a usable format
-    # Just return the raw data - Vapi can handle mulaw directly
-    print(f"Returning raw audio data: {len(audio_data)} bytes (mulaw format)")
-    return audio_data
-
-
-def convert_audio_to_pcm_original(audio_data, sample_rate=SAMPLE_RATE):
-    """
-    Original audio conversion method (renamed for fallback)
+        Raw PCM bytes (16-bit, mono) or original data if conversion fails
     """
     try:
         # Check if it's a WAV file by looking at the header first (faster)
@@ -299,8 +257,6 @@ def tts():
             deepdub_payload = {
                 "model": "dd-etts-2.5",
                 "targetText": text,
-                "format": "mulaw",
-                "sampleRate": 8000,
                 "locale": "he-IL",
                 "voicePromptId": VOICE_PROMPT_ID,
                 "speed": speed  # Add speed control for faster speech
@@ -311,20 +267,14 @@ def tts():
             print(f"API URL: https://restapi.deepdub.ai/tts")
             
             try:
-                # Optimized request with connection pooling and streaming
-                session = requests.Session()
-                session.headers.update({
-                    "Content-Type": "application/json",
-                    "x-api-key": DEEPDUB_API_KEY,
-                    "Accept": "audio/*,application/json,*/*",
-                    "Connection": "keep-alive"
-                })
-                
-                r = session.post(
+                r = requests.post(
                     "https://restapi.deepdub.ai/tts",
+                    headers={
+                        "Content-Type": "application/json",
+                        "x-api-key": DEEPDUB_API_KEY
+                    },
                     json=deepdub_payload,
-                    timeout=25,
-                    stream=True  # Enable streaming for large responses
+                    timeout=25
                 )
             except requests.exceptions.RequestException as req_error:
                 print(f"Request failed: {req_error}")
@@ -390,9 +340,9 @@ def tts():
                     audio_data = audio_response.content
                     print(f"Downloaded audio data: {len(audio_data)} bytes")
                     
-                    # For JSON response (audioUrl), keep simple processing
-                    pcm_data = audio_data  # Use raw data
-                    print(f"Using raw audio from URL: {len(pcm_data)} bytes")
+                    # Convert to PCM
+                    pcm_data = convert_audio_to_pcm(audio_data, sample_rate)
+                    print(f"Converted to PCM: {len(pcm_data)} bytes")
 
                     print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
 
@@ -414,10 +364,9 @@ def tts():
                 print(f"Received direct audio response: {content_type}")
                 print(f"Audio content length: {len(r.content)} bytes")
                 
-                # Keep audio in original format - Vapi can handle mulaw directly
-                # No conversion needed for mulaw format from Deepdub
-                pcm_data = r.content  # Use raw mulaw data
-                print(f"Using raw mulaw audio: {len(pcm_data)} bytes")
+                # Convert to PCM at 8000Hz
+                pcm_data = convert_audio_to_pcm(r.content, 8000)  # Force 8000Hz as requested
+                print(f"Converted to PCM: {len(pcm_data)} bytes")
                 
                 print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
                 
@@ -443,35 +392,6 @@ def tts():
 def root():
     status = "🎭 DEMO MODE" if DEMO_MODE else "🚀 PRODUCTION MODE"
     return f"Deepdub TTS Proxy with streaming is running. {status}"
-
-@app.route("/stats")
-def stats():
-    """Performance statistics endpoint"""
-    if audio_conversion_stats['total_conversions'] > 0:
-        avg_time = audio_conversion_stats['total_time'] / audio_conversion_stats['total_conversions']
-        return jsonify({
-            "audio_conversion": {
-                "total_conversions": audio_conversion_stats['total_conversions'],
-                "total_time_seconds": round(audio_conversion_stats['total_time'], 3),
-                "average_time_ms": round(avg_time * 1000, 1),
-                "fast_method_used": audio_conversion_stats['fast_method_used'],
-                "fallback_method_used": audio_conversion_stats['fallback_method_used']
-            },
-            "libraries": {
-                "soundfile_available": SOUNDFILE_AVAILABLE,
-                "librosa_available": LIBROSA_AVAILABLE,
-                "pydub_available": PYDUB_AVAILABLE
-            }
-        })
-    else:
-        return jsonify({
-            "message": "No audio conversions performed yet",
-            "libraries": {
-                "soundfile_available": SOUNDFILE_AVAILABLE,
-                "librosa_available": LIBROSA_AVAILABLE,
-                "pydub_available": PYDUB_AVAILABLE
-            }
-        })
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 5000))
