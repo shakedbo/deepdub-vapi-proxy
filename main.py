@@ -63,7 +63,7 @@ else:
 
 VALID_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100]
 
-def convert_audio_to_pcm(audio_data, sample_rate=16000):
+def convert_audio_to_pcm(audio_data, sample_rate=8000):
     """
     Convert audio data to raw PCM format that Vapi expects.
     
@@ -256,6 +256,8 @@ def tts():
             deepdub_payload = {
                 "model": "dd-etts-2.5",
                 "targetText": text,
+                "format": "mulaw",
+                "sampleRate": 8000,   # mulaw הוא בפועל 8k
                 "locale": "he-IL",
                 "voicePromptId": VOICE_PROMPT_ID,
                 "speed": speed  # Add speed control for faster speech
