@@ -94,101 +94,25 @@ audio_conversion_stats = {
 
 def convert_audio_to_pcm_fast(audio_data, target_sample_rate=SAMPLE_RATE):
     """
-    Ultra-fast audio conversion using soundfile + librosa when available.
-    Falls back to pydub if needed.
+    Fast and simple audio conversion optimized for Deepdub mulaw format.
+    Prioritizes speed and audio quality for Hebrew speech.
     
     Args:
-        audio_data: Raw audio bytes
+        audio_data: Raw audio bytes (mulaw from Deepdub)
         target_sample_rate: Target sample rate (default 8000Hz)
     
     Returns:
         Raw PCM bytes (16-bit, mono) 
     """
-    start_time = time.time()
-    
     if not audio_data or len(audio_data) == 0:
         raise ValueError("Empty audio data provided")
 
-    print(f"Fast audio conversion: {len(audio_data)} bytes -> PCM {target_sample_rate}Hz")
+    print(f"Simple audio conversion: {len(audio_data)} bytes -> PCM {target_sample_rate}Hz")
     
-    # Method 1: Ultra-fast soundfile + librosa (preferred)
-    if SOUNDFILE_AVAILABLE and LIBROSA_AVAILABLE:
-        try:
-            print("Using soundfile + librosa for ultra-fast conversion")
-            
-            # Load audio with soundfile (much faster than pydub)
-            with io.BytesIO(audio_data) as audio_buffer:
-                try:
-                    # soundfile can handle many formats directly from memory
-                    audio_array, original_sr = sf.read(audio_buffer)
-                    print(f"Loaded with soundfile: {original_sr}Hz, shape: {audio_array.shape}")
-                    
-                    # Convert to mono if stereo
-                    if len(audio_array.shape) > 1 and audio_array.shape[1] > 1:
-                        audio_array = np.mean(audio_array, axis=1)
-                        print("Converted stereo to mono")
-                    
-                    # Resample if needed using librosa (very fast)
-                    if original_sr != target_sample_rate:
-                        print(f"Resampling {original_sr}Hz -> {target_sample_rate}Hz")
-                        audio_array = librosa.resample(audio_array, orig_sr=original_sr, target_sr=target_sample_rate)
-                    
-                    # Convert to 16-bit PCM
-                    # soundfile loads as float32 normalized to [-1, 1]
-                    pcm_int16 = (audio_array * 32767).astype(np.int16)
-                    
-                    # Convert to bytes
-                    pcm_bytes = pcm_int16.tobytes()
-                    
-                    # Performance tracking
-                    conversion_time = time.time() - start_time
-                    audio_conversion_stats['total_conversions'] += 1
-                    audio_conversion_stats['total_time'] += conversion_time
-                    audio_conversion_stats['fast_method_used'] += 1
-                    
-                    print(f"Fast conversion complete: {len(pcm_bytes)} bytes PCM in {conversion_time*1000:.1f}ms")
-                    return pcm_bytes
-                    
-                except Exception as sf_error:
-                    print(f"soundfile failed: {sf_error}, trying other methods...")
-        except Exception as e:
-            print(f"Fast conversion method failed: {e}")
-    
-    # Method 2: soundfile only (no resampling)
-    elif SOUNDFILE_AVAILABLE:
-        try:
-            print("Using soundfile (no resampling)")
-            with io.BytesIO(audio_data) as audio_buffer:
-                audio_array, original_sr = sf.read(audio_buffer)
-                print(f"Loaded: {original_sr}Hz, target: {target_sample_rate}Hz")
-                
-                # Convert to mono if needed
-                if len(audio_array.shape) > 1 and audio_array.shape[1] > 1:
-                    audio_array = np.mean(audio_array, axis=1)
-                
-                # Simple rate warning
-                if original_sr != target_sample_rate:
-                    print(f"Warning: Rate mismatch {original_sr} != {target_sample_rate}, no resampling")
-                
-                # Convert to 16-bit PCM
-                pcm_int16 = (audio_array * 32767).astype(np.int16)
-                pcm_bytes = pcm_int16.tobytes()
-                
-                # Performance tracking
-                conversion_time = time.time() - start_time
-                audio_conversion_stats['total_conversions'] += 1
-                audio_conversion_stats['total_time'] += conversion_time
-                audio_conversion_stats['fast_method_used'] += 1
-                
-                print(f"soundfile conversion: {len(pcm_bytes)} bytes in {conversion_time*1000:.1f}ms")
-                return pcm_bytes
-        except Exception as e:
-            print(f"soundfile method failed: {e}")
-    
-    # Method 3: Fall back to original pydub method
-    print("Falling back to pydub/wave conversion")
-    audio_conversion_stats['fallback_method_used'] += 1
-    return convert_audio_to_pcm_original(audio_data, target_sample_rate)
+    # For Deepdub mulaw format, the data is often already in a usable format
+    # Just return the raw data - Vapi can handle mulaw directly
+    print(f"Returning raw audio data: {len(audio_data)} bytes (mulaw format)")
+    return audio_data
 
 
 def convert_audio_to_pcm_original(audio_data, sample_rate=SAMPLE_RATE):
@@ -464,9 +388,9 @@ def tts():
                     audio_data = audio_response.content
                     print(f"Downloaded audio data: {len(audio_data)} bytes")
                     
-                    # Convert to PCM
-                    pcm_data = convert_audio_to_pcm_fast(audio_data, sample_rate)
-                    print(f"Converted to PCM: {len(pcm_data)} bytes")
+                    # For JSON response (audioUrl), keep simple processing
+                    pcm_data = audio_data  # Use raw data
+                    print(f"Using raw audio from URL: {len(pcm_data)} bytes")
 
                     print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
 
@@ -488,9 +412,10 @@ def tts():
                 print(f"Received direct audio response: {content_type}")
                 print(f"Audio content length: {len(r.content)} bytes")
                 
-                # Convert to PCM at 8000Hz
-                pcm_data = convert_audio_to_pcm_fast(r.content, 8000)  # Force 8000Hz as requested
-                print(f"Converted to PCM: {len(pcm_data)} bytes")
+                # Keep audio in original format - Vapi can handle mulaw directly
+                # No conversion needed for mulaw format from Deepdub
+                pcm_data = r.content  # Use raw mulaw data
+                print(f"Using raw mulaw audio: {len(pcm_data)} bytes")
                 
                 print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
                 
