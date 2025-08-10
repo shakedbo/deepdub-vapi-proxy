@@ -62,8 +62,9 @@ else:
     print("✅ pydub found - full audio conversion available")
 
 VALID_SAMPLE_RATES = [8000, 16000, 22050, 24000, 44100]
+SAMPLE_RATE = 8000  # Default sample rate for PCM conversion
 
-def convert_audio_to_pcm(audio_data, sample_rate=8000):
+def convert_audio_to_pcm(audio_data, sample_rate=SAMPLE_RATE):
     """
     Convert audio data to raw PCM format that Vapi expects.
     
@@ -71,7 +72,7 @@ def convert_audio_to_pcm(audio_data, sample_rate=8000):
     
     Args:
         audio_data: Raw audio bytes (MP3, WAV, etc.)
-        sample_rate: Target sample rate for PCM output
+        sample_rate: Target sample rate for PCM output (default 8000Hz)
     
     Returns:
         Raw PCM bytes (16-bit, mono) or original data if conversion fails
@@ -256,8 +257,8 @@ def tts():
             deepdub_payload = {
                 "model": "dd-etts-2.5",
                 "targetText": text,
-                "format": "mulaw",
-                "sampleRate": 8000,   # mulaw הוא בפועל 8k
+                "format": "wav",
+                "sampleRate": 8000,
                 "locale": "he-IL",
                 "voicePromptId": VOICE_PROMPT_ID,
                 "speed": speed  # Add speed control for faster speech
@@ -342,13 +343,13 @@ def tts():
                     print(f"Raw response content: {r.text}")
                     return jsonify({"error": f"Invalid JSON response from Deepdub API: {str(json_error)}", "raw_response": r.text[:200]}), 500
                     
-            elif 'audio/' in content_type:
-                # Direct audio response (new format)
+            elif 'audio/' in content_type or 'text/plain' in content_type:
+                # Direct audio response (new format) or binary data with text/plain content-type
                 print(f"Received direct audio response: {content_type}")
                 print(f"Audio content length: {len(r.content)} bytes")
                 
-                # Convert to PCM
-                pcm_data = convert_audio_to_pcm(r.content, sample_rate)
+                # Convert to PCM at 8000Hz
+                pcm_data = convert_audio_to_pcm(r.content, 8000)  # Force 8000Hz as requested
                 print(f"Converted to PCM: {len(pcm_data)} bytes")
                 
                 print(f"TTS completed: {request_id} | Duration: {time.time() - start_time:.2f}s")
