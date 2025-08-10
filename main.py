@@ -257,8 +257,6 @@ def tts():
             deepdub_payload = {
                 "model": "dd-etts-2.5",
                 "targetText": text,
-                "format": "wav",
-                "sampleRate": 8000,
                 "locale": "he-IL",
                 "voicePromptId": VOICE_PROMPT_ID,
                 "speed": speed  # Add speed control for faster speech
@@ -293,12 +291,30 @@ def tts():
 
             print(f"Deepdub API response status: {r.status_code}")
             print(f"Deepdub API response headers: {dict(r.headers)}")
-            print(f"Response content length: {len(r.text)}")
-            print(f"Deepdub API response content: {r.text[:500]}...")  # First 500 chars
+            print(f"Response content length: {len(r.content)} bytes")
             
-            if not r.text.strip():
+            # Check for empty response
+            if not r.content:
                 print("ERROR: Empty response from Deepdub API")
                 return jsonify({"error": "Empty response from Deepdub API"}), 500
+            
+            # Log first few bytes as hex for debugging
+            print(f"First 32 bytes (hex): {r.content[:32].hex() if len(r.content) >= 32 else r.content.hex()}")
+            
+            # Try to detect if it's actually text/error response
+            try:
+                if r.content.startswith(b'{') or r.content.startswith(b'['):
+                    # Looks like JSON, try to parse for error info
+                    error_text = r.content.decode('utf-8', errors='ignore')
+                    print(f"Received JSON-like response: {error_text[:500]}")
+                elif len(r.content) < 1000 and all(byte < 128 for byte in r.content[:100]):
+                    # Might be a text error message
+                    error_text = r.content.decode('utf-8', errors='ignore')
+                    print(f"Received text response: {error_text}")
+                    return jsonify({"error": f"Deepdub API returned text error: {error_text}"}), 500
+            except Exception as decode_error:
+                print(f"Could not decode response as text: {decode_error}")
+                # Continue with binary processing
             
             # Check if response is JSON
             content_type = r.headers.get('content-type', '').lower()
