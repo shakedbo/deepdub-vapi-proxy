@@ -299,6 +299,8 @@ def tts():
             deepdub_payload = {
                 "model": "dd-etts-2.5",
                 "targetText": text,
+                "format": "mulaw",
+                "sampleRate": 8000,
                 "locale": "he-IL",
                 "voicePromptId": VOICE_PROMPT_ID,
                 "speed": speed  # Add speed control for faster speech
